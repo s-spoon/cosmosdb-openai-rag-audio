@@ -68,7 +68,7 @@ You can run the project in your local VS Code Dev Container using the [Dev Conta
 
 2. Clone the repo:
    ```bash
-   git clone https://github.com/Azure-Samples/cosmosdb-openai-rag-audio
+   git clone https://github.com/s-spoon/cosmosdb-openai-rag-audio
    ```
 3. Create a Python virtual environment and activate it:
    ```bash
