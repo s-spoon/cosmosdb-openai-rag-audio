@@ -203,6 +203,7 @@ class RTMiddleTier:
                             pass
                 except:
                     retry_count -= 1
+                    await asyncio.sleep(1)
                     if retry_count == 0:
                         print(f"Failed to establish WebSocket connection after retries:")
 
