@@ -33,7 +33,7 @@ if __name__ == "__main__":
         "3. Produce an answer that's as short as possible. If the answer isn't in the knowledge base, say you don't know."
     )
     
-    # Attach CosmosDB vector search for MongoDB vCore
+    # Attach CosmosDB vector search for MongoDB
     attach_rag_tools(rtmt, mongo_connection_string, database_name, collection_name)
 
     rtmt.attach_to_app(app, "/realtime")

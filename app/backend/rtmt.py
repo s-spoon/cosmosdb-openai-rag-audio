@@ -174,38 +174,31 @@ class RTMiddleTier:
             else:
                 headers = { "Authorization": f"Bearer {self._token_provider()}" } # NOTE: no async version of token provider, maybe refresh token on a timer?
            
-            retry_count = 15
-            while retry_count > 0:
+            async with session.ws_connect("/openai/realtime", headers=headers, params=params) as target_ws:
+                async def from_client_to_server():
+                    async for msg in ws:
+                        if msg.type == aiohttp.WSMsgType.TEXT:
+                            new_msg = await self._process_message_to_server(msg, ws)
+                            if new_msg is not None:
+                                await target_ws.send_str(new_msg)
+                        else:
+                            print("Error: unexpected message type:", msg.type)
+
+                async def from_server_to_client():
+                    async for msg in target_ws:
+                        if msg.type == aiohttp.WSMsgType.TEXT:
+                            new_msg = await self._process_message_to_client(msg, ws, target_ws)
+                            if new_msg is not None:
+                                await ws.send_str(new_msg)
+                        else:
+                            print("Error: unexpected message type:", msg.type)
+
                 try:
-                    async with session.ws_connect("/openai/realtime", headers=headers, params=params) as target_ws:
-                        async def from_client_to_server():
-                            async for msg in ws:
-                                if msg.type == aiohttp.WSMsgType.TEXT:
-                                    new_msg = await self._process_message_to_server(msg, ws)
-                                    if new_msg is not None:
-                                        await target_ws.send_str(new_msg)
-                                else:
-                                    print("Error: unexpected message type:", msg.type)
-
-                        async def from_server_to_client():
-                            async for msg in target_ws:
-                                if msg.type == aiohttp.WSMsgType.TEXT:
-                                    new_msg = await self._process_message_to_client(msg, ws, target_ws)
-                                    if new_msg is not None:
-                                        await ws.send_str(new_msg)
-                                else:
-                                    print("Error: unexpected message type:", msg.type)
-
-                        try:
-                            await asyncio.gather(from_client_to_server(), from_server_to_client())
-                        except ConnectionResetError:
-                            # Ignore the errors resulting from the client disconnecting the socket
-                            pass
-                except:
-                    retry_count -= 1
-                    await asyncio.sleep(1)
-                    if retry_count == 0:
-                        print(f"Failed to establish WebSocket connection after retries:")
+                    await asyncio.gather(from_client_to_server(), from_server_to_client())
+                except ConnectionResetError:
+                    # Ignore the errors resulting from the client disconnecting the socket
+                    pass
+               
 
     async def _websocket_handler(self, request: web.Request):
         ws = web.WebSocketResponse()

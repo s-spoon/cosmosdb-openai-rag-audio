@@ -32,8 +32,8 @@ fi
 echo ""
 echo "Starting backend"
 echo ""
-open http://127.0.0.1:8765
 python app.py
+open http://127.0.0.1:8765
 if [ $? -ne 0 ]; then
     echo "Failed to start backend"
     exit $?

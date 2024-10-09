@@ -8,6 +8,7 @@ from rtmt import RTMiddleTier
 import numpy as np
 
 load_dotenv()
+
 _search_tool_schema = {
     "type": "function",
     "name": "search",
@@ -48,6 +49,7 @@ _grounding_tool_schema = {
         "additionalProperties": False
     }
 }
+
 # MongoDB setup and tool attachment function
 def init_mongo_client(mongo_connection_string):
     return MongoClient(mongo_connection_string)
@@ -64,11 +66,11 @@ def vector_search(query, mongo_client, database_name, collection_name, embedding
 
     results = []
     for doc in docs:
-        doc_embedding = np.array(doc['embedding'])
+        doc_embedding = np.array(doc['content'])
         # Calculate cosine similarity between query and document embeddings
         similarity = cosine_similarity([query_embedding], [doc_embedding])[0][0]
-        print(similarity)
-        results.append((doc['text'], similarity))
+        print("--------------------------", doc['title'])
+        results.append((doc['title'], similarity))  # Changed 'text' to 'title'
 
     # Sort by similarity score in descending order
     results.sort(key=lambda x: x[1], reverse=True)
@@ -83,8 +85,8 @@ async def _search_tool(mongo_client, database_name, collection_name, embeddings_
     results = vector_search(args['query'], mongo_client, database_name, collection_name, embeddings_model)
     
     result_str = ""
-    for i, (text, similarity) in enumerate(results):
-        result_str += f"[doc_{i}]: {text}\n-----\n"
+    for i, (title, similarity) in enumerate(results):
+        result_str += f"[doc_{i}]: {title} (Similarity: {similarity:.4f})\n-----\n"
     
     return ToolResult(result_str, ToolResultDirection.TO_SERVER)
 
