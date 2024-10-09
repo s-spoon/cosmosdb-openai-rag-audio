@@ -5,17 +5,16 @@ from pymongo import MongoClient
 from langchain_openai import AzureOpenAIEmbeddings
 from rtmt import Tool, ToolResult, ToolResultDirection
 from sklearn.metrics.pairwise import cosine_similarity
-from rtmt import RTMiddleTier
 import numpy as np
 
+# Load environment variables
 load_dotenv()
 
+# Search tool schema
 _search_tool_schema = {
     "type": "function",
     "name": "search",
-    "description": "Search the knowledge base. The knowledge base is in English, translate to and from English if " + \
-                   "needed. Results are formatted as a source name first in square brackets, followed by the text " + \
-                   "content, and a line with '-----' at the end of each result.",
+    "description": "Search the knowledge base using a query and return relevant results.",
     "parameters": {
         "type": "object",
         "properties": {
@@ -24,17 +23,15 @@ _search_tool_schema = {
                 "description": "Search query"
             }
         },
-        "required": ["query"],
-        "additionalProperties": False
+        "required": ["query"]
     }
 }
 
+# Grounding tool schema
 _grounding_tool_schema = {
     "type": "function",
     "name": "report_grounding",
-    "description": "Report use of a source from the knowledge base as part of an answer (effectively, cite the source). Sources " + \
-                   "appear in square brackets before each knowledge base passage. Always use this tool to cite sources when responding " + \
-                   "with information from the knowledge base.",
+    "description": "Report the use of a source from the knowledge base by citing it.",
     "parameters": {
         "type": "object",
         "properties": {
@@ -43,85 +40,86 @@ _grounding_tool_schema = {
                 "items": {
                     "type": "string"
                 },
-                "description": "List of source names from last statement actually used, do not include the ones not used to formulate a response"
+                "description": "List of source names that were used."
             }
         },
-        "required": ["sources"],
-        "additionalProperties": False
+        "required": ["sources"]
     }
 }
 
-# MongoDB setup and tool attachment function
+# Initialize MongoDB client
 def init_mongo_client(mongo_connection_string):
     return MongoClient(mongo_connection_string)
 
-# Function to perform vector search using cosine similarity in MongoDB
-async def vector_search(query, mongo_client, database_name, collection_name, embeddings_model):
+# Vector search using cosine similarity on document content
+def vector_search(query, mongo_client, database_name, collection_name, embeddings_model):
     collection = mongo_client[database_name][collection_name]
 
     # Generate embedding for the query
     query_embedding = np.array(embeddings_model.embed_query(query))
 
-    # Fetch all documents
+    # Fetch all documents from the collection
     docs = collection.find({})
 
     results = []
     for doc in docs:
-        doc_embedding = np.array(doc['embedding'])
+        doc_embedding = np.array(doc['embedding'])  # Using content embedding instead of title
         if doc_embedding.size == 0:
             continue  # Skip if no valid embedding is found
+        
         # Calculate cosine similarity between query and document embeddings
         similarity = cosine_similarity([query_embedding], [doc_embedding])[0][0]
-        results.append((doc['title'], similarity))  # Changed 'text' to 'title'
+        results.append((doc['title'], similarity, doc['content']))  # Include 'content' for detailed results
 
     # Sort by similarity score in descending order
     results.sort(key=lambda x: x[1], reverse=True)
 
-    # Return top 5 most similar documents
+    # Return the top 5 most similar documents
     return results[:5]
 
-async def _search_tool(mongo_client, database_name, collection_name, embeddings_model, args: any) -> ToolResult:
-    print(f"Searching for '{args['query']}' in the knowledge base.")
+def _search_tool(mongo_client, database_name, collection_name, embeddings_model, args):
+    query = args['query']
+    print(f"Searching for '{query}' in the knowledge base.")
+
+    # Perform vector search on content embeddings
+    results = vector_search(query, mongo_client, database_name, collection_name, embeddings_model)
     
-    # Perform the vector search in MongoDB
-    results = await vector_search(args['query'], mongo_client, database_name, collection_name, embeddings_model)
-    
+    # Format results to be sent as a system message to the LLM
     result_str = ""
-    async for i, (title, similarity) in enumerate(results):
-        result_str += f"[doc_{i}]: {title} (Similarity: {similarity:.4f})\n-----\n"
+    for i, (title, similarity, content) in enumerate(results):
+        truncated_content = content[:2000] if len(content) > 2000 else content
+        result_str += f"[doc_{i}]: {title} (Similarity: {similarity:.4f})\nContent: {truncated_content}\n-----\n"
     
     return ToolResult(result_str, ToolResultDirection.TO_SERVER)
 
-KEY_PATTERN = re.compile(r'^[a-zA-Z0-9_=\-]+$')
-
-async def _report_grounding_tool(mongo_client, database_name, collection_name, args: any) -> ToolResult:
-    sources = [s for s in args["sources"] if KEY_PATTERN.match(s)]
-    list_of_sources = " OR ".join(sources)
+def _report_grounding_tool(mongo_client, database_name, collection_name, args):
+    sources = args["sources"]
+    valid_sources = [s for s in sources if re.match(r'^[a-zA-Z0-9_=\-]+$', s)]
+    list_of_sources = " OR ".join(valid_sources)
     print(f"Grounding source: {list_of_sources}")
 
     # Fetch documents from MongoDB based on the sources
-    collection = mongo_client[database_name][collection_name]  # Ensure you have access to the correct DB and collection
+    collection = mongo_client[database_name][collection_name]
     search_results = []
 
-    # Look up each source in the MongoDB collection
-    for source in sources:
-        doc = await collection.find_one({"title": source})  # Adjust the field if needed (e.g., based on your document structure)
+    for source in valid_sources:
+        doc = collection.find_one({"title": source})
         if doc:
             search_results.append({
-                "chunk_id": doc.get("title"),  # Assuming "title" is the identifier; replace if necessary
-                "content": doc.get("content"),  # Fetch other fields as needed
-                "metadata": doc.get("metadata")  # If you want to include metadata
+                "chunk_id": doc.get("title"),
+                "content": doc.get("content"),
+                "metadata": doc.get("metadata")
             })
 
-    # Format the results for the response
+    # Format the results
     result_str = ""
-    async for result in search_results:
-        result_str += f"[{result['chunk_id']}]: {result['content']}\n-----\n"
+    for result in search_results:
+        result_str += f"[{result['chunk_id']}]: {result['content'][:200]}...\n-----\n"
 
     return ToolResult(result_str.strip(), ToolResultDirection.TO_SERVER)
 
-
-def attach_rag_tools(rtmt: RTMiddleTier, mongo_connection_string: str, database_name: str, collection_name: str) -> None:
+# Attach RAG tools to the RTMiddleTier
+def attach_rag_tools(rtmt, mongo_connection_string, database_name, collection_name):
     # Initialize MongoDB client
     mongo_client = init_mongo_client(mongo_connection_string)
 
