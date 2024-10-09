@@ -1,115 +1,134 @@
-# VoiceRAG: An Application Pattern for RAG + Voice Using Azure Cosmos DB for MongoDB and GPT-4o Realtime API for Audio
+# VoiceRAG: Implementing RAG with Voice Integration Using Azure Cosmos DB for MongoDB and GPT-4o Realtime API
 
-[![Open in GitHub Codespaces](https://img.shields.io/static/v1?style=for-the-badge&label=GitHub+Codespaces&message=Open&color=brightgreen&logo=github)](https://github.com/codespaces/new?hide_repo_select=true&ref=main&skip_quickstart=true&machine=basicLinux32gb&repo=860141324&devcontainer_path=.devcontainer%2Fdevcontainer.json&geo=WestUs2)
-[![Open in Dev Containers](https://img.shields.io/static/v1?style=for-the-badge&label=Dev%20Containers&message=Open&color=blue&logo=visualstudiocode)](https://vscode.dev/redirect?url=vscode://ms-vscode-remote.remote-containers/cloneInVolume?url=https://github.com/Azure-Samples/aisearch-openai-rag-audio)
+This repository provides a comprehensive guide to implementing **retrieval-augmented generation (RAG)** in applications with voice interfaces, powered by the **GPT-4o Realtime API for audio** and **Azure Cosmos DB for MongoDB** as a storage solution for vector embeddings.
 
-This repository contains an example of how to implement **retrieval-augmented generation (RAG)** support in applications that use voice as their primary interface, powered by the **GPT-4o realtime API for audio**.
-
-In this version, we are using **Azure Cosmos DB for MongoDB** as the storage for vector embeddings. The embeddings are generated using Azure OpenAI's `text-embedding-ada-002` model, which powers the retrieval of relevant documents during the RAG process.
+The application leverages the **text-embedding-ada-002** model from Azure OpenAI to generate document embeddings that facilitate the retrieval of relevant documents during the RAG process.
 
 ![RTMTPattern](docs/RTMTPattern.png)
 
-## Running this Sample
-We'll follow 4 steps to get this example running in your own environment: pre-requisites, creating the vector store, setting up the environment, and running the app.
+## Getting Started
+
+Follow these four key steps to run this example in your own environment: preparing pre-requisites, setting up the vector store, configuring the environment, and running the application.
 
 ### 1. Pre-requisites
-You'll need instances of the following Azure services. You can re-use existing service instances or create new ones:
-1. [Azure OpenAI](https://ms.portal.azure.com/#create/Microsoft.CognitiveServicesOpenAI), with 2 model deployments: one of the **gpt-4o-realtime-preview** model, and one for embeddings (e.g., `text-embedding-ada-002`).
-2. [Azure Cosmos DB for MongoDB API](https://ms.portal.azure.com/#create/Microsoft.CosmosDBMongoAPI), which will store your document embeddings and metadata.
 
-### 2. Setting up the vector store (Azure Cosmos DB for MongoDB)
-In this application, the document embeddings will be stored in **Azure Cosmos DB for MongoDB**. We'll configure Cosmos DB to hold your knowledge base (e.g., documents or any other content you want the app to be able to retrieve) and their embeddings for vector search.
+Before proceeding, ensure that you have access to the following Azure services:
 
-#### Storing documents in Azure Cosmos DB for MongoDB
-1. **Create a MongoDB Collection**: Create a new database and collection in Azure Cosmos DB for MongoDB. This collection will store the documents and their vector embeddings.
-2. **Upload documents**: You can upload your documents manually into the MongoDB collection, either through the Azure portal or using a MongoDB client like MongoDB Compass. These documents should include an embedding field for the vector representation (which will be generated automatically by the app).
-3. **Embedding generation**: As documents are processed in the app, vector embeddings will be created using the `text-embedding-ada-002` model from Azure OpenAI. The embedding is a 1536-dimensional vector that allows for semantic search using cosine similarity.
+1. [Azure OpenAI](https://ms.portal.azure.com/#create/Microsoft.CognitiveServicesOpenAI):
+   - Two model deployments: one for **gpt-4o-realtime-preview** and another for embeddings (e.g., `text-embedding-ada-002`).
+2. [Azure Cosmos DB for MongoDB API](https://ms.portal.azure.com/#create/Microsoft.CosmosDBMongoAPI):
+   - This will store your document embeddings and metadata for vector search.
 
+### 2. Configuring the Vector Store with Azure Cosmos DB for MongoDB
 
-### 3. Setting up the environment
-The app needs to know which service endpoints to use for the Azure OpenAI and Azure Cosmos DB for MongoDB services. The following variables can be set as environment variables, or you can create a `.env` file in the root directory with this content:
+In this application, document embeddings are stored in **Azure Cosmos DB for MongoDB**. The process involves configuring Cosmos DB to host the knowledge base (e.g., documents or other content) and the corresponding embeddings for vector search.
 
-   ```
-   AZURE_OPENAI_ENDPOINT=wss://<your instance name>.openai.azure.com
-   AZURE_OPENAI_DEPLOYMENT=gpt-4o-realtime-preview
-   AZURE_OPENAI_API_KEY=<your api key>
-   MONGO_CONNECTION_STRING=<your mongo connection string>
-   MONGO_DB_NAME=<your database name>
-   MONGO_COLLECTION_NAME=<your collection name>
-   ```
+#### Steps to Store Documents:
 
-   - `AZURE_OPENAI_ENDPOINT`: The WebSocket endpoint for Azure OpenAI's GPT-4o realtime API.
-   - `AZURE_OPENAI_DEPLOYMENT`: The deployment name for the GPT-4o model.
-   - `AZURE_OPENAI_API_KEY`: Your API key for Azure OpenAI.
-   - `MONGO_CONNECTION_STRING`: The connection string for Azure Cosmos DB for MongoDB API.
-   - `MONGO_DB_NAME`: The name of the database you created for storing embeddings.
-   - `MONGO_COLLECTION_NAME`: The name of the collection where documents and embeddings are stored.
+1. **Create a MongoDB Collection**: Set up a new database and collection in Azure Cosmos DB for MongoDB. This collection will hold both the documents and their vector embeddings.
+2. **Upload Documents**: Add your documents to the `./data/` folder in the project.
+3. **Generate Embeddings**: When documents are processed, embeddings will be created using the **text-embedding-ada-002** model. These embeddings consist of 1536-dimensional vectors, enabling semantic search via cosine similarity.
 
-### 4. Running the app
+### 3. Setting Up the Environment
 
-Once the codespace opens (this may take several minutes), open a new terminal.
+To enable the application to communicate with the necessary Azure services, set the following variables as environment variables or add them to a `.env` file in the root directory:
 
-#### VS Code Dev Containers
-You can run the project in your local VS Code Dev Container using the [Dev Containers extension](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-containers):
+```bash
+AZURE_OPENAI_ENDPOINT=wss://<your-instance-name>.openai.azure.com
+AZURE_OPENAI_DEPLOYMENT=gpt-4o-realtime-preview
+AZURE_OPENAI_API_KEY=<your-api-key>
+MONGO_CONNECTION_STRING=<your-mongo-connection-string>
+MONGO_DB_NAME=<your-database-name>
+MONGO_COLLECTION_NAME=<your-collection-name>
+```
 
-1. Start Docker Desktop (install it if not already installed).
-2. Open the project:
+- **AZURE_OPENAI_ENDPOINT**: The WebSocket endpoint for Azure OpenAI's GPT-4o Realtime API.
+- **AZURE_OPENAI_DEPLOYMENT**: The deployment name for the GPT-4o model.
+- **AZURE_OPENAI_API_KEY**: Your API key for Azure OpenAI.
+- **MONGO_CONNECTION_STRING**: The connection string for your Azure Cosmos DB for MongoDB instance.
+- **MONGO_DB_NAME**: The name of the database for storing embeddings.
+- **MONGO_COLLECTION_NAME**: The collection for storing documents and embeddings.
 
-    [![Open in Dev Containers](https://img.shields.io/static/v1?style=for-the-badge&label=Dev%20Containers&message=Open&color=blue&logo=visualstudiocode)](https://vscode.dev/redirect?url=vscode://ms-vscode-remote.remote-containers/cloneInVolume?url=https://github.com/azure-samples/aisearch-openai-rag-audio)
-3. In the VS Code window that opens, once the project files show up (this may take several minutes), open a new terminal.
+### 4. Running the Application
 
-#### Local environment
+Once your development environment is set up, follow these steps to run the application:
+
+#### Running in VS Code Dev Containers
+
+You can run the project locally using the [Dev Containers extension](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-containers):
+
+1. Start Docker Desktop (if not already installed).
+2. Open the project using the link below:
+
+   [![Open in Dev Containers](https://img.shields.io/static/v1?style=for-the-badge&label=Dev%20Containers&message=Open&color=blue&logo=visualstudiocode)](https://vscode.dev/redirect?url=vscode://ms-vscode-remote.remote-containers/cloneInVolume?url=https://github.com/azure-samples/aisearch-openai-rag-audio)
+
+3. Once the project files load (this may take several minutes), open a new terminal and follow the next steps.
+
+#### Running Locally
+
 1. Install the required tools:
    - [Node.js](https://nodejs.org/en)
-   - [Python >=3.11](https://www.python.org/downloads/)
-      - **Important**: Python and the pip package manager must be in the path in Windows for the setup scripts to work.
-      - **Important**: Ensure you can run `python --version` from the console. On Ubuntu, you might need to run `sudo apt install python-is-python3` to link `python` to `python3`.
-   - [Powershell](https://learn.microsoft.com/powershell/scripting/install/installing-powershell)
+   - [Python 3.11 or later](https://www.python.org/downloads/)
+   - [Powershell](https://learn.microsoft.com/powershell/scripting/install/installing-powershell) (for Windows users)
 
-2. Clone the repo:
+2. Clone the repository:
    ```bash
    git clone https://github.com/s-spoon/cosmosdb-openai-rag-audio.git
    ```
-3. Create a Python virtual environment and activate it:
+
+3. Set up a Python virtual environment and activate it:
    ```bash
    python -m venv .venv
-   source .venv/bin/activate  # On Windows: .venv\Scripts\Activate.ps1
-   ```
-4. Run this command to start the app:
-
-   Windows:
-   ```pwsh
-   cd app
-   pwsh .\start.ps1
+   source .venv/bin/activate  # For Windows: .venv\Scripts\Activate.ps1
    ```
 
-   Linux/Mac:
+4. Start the application:
+   - **For Windows**:
+     ```pwsh
+     cd app
+     pwsh .\start.ps1
+     ```
+
+   - **For Linux/Mac**:
+     ```bash
+     cd app
+     ./start.sh
+     ```
+
+5. To upload documents to Cosmos DB for MongoDB, open a new terminal and run the following:
    ```bash
-   cd app
-   ./start.sh
+   cd app/backend/
+   python db.py
    ```
 
-6. The app is available on http://localhost:8765
+   This script will replace the current collection in Cosmos DB and add the documents from `./data/`.
+   Restart the server.
 
-Once the app is running, when you navigate to the URL above you should see the start screen of the app:
-![app screenshot](docs/talktoyourdataapp.png)
+6. Access the app at [http://localhost:8765](http://localhost:8765).
 
-### Frontend: Enabling Direct Communication with AOAI Realtime API
-You can make the frontend skip the middle tier and talk to the WebSockets AOAI Realtime API directly, if you choose to do so. However, note that this will stop the retrieval-augmented generation (RAG) process, and will require exposing your API key in the frontend, which is insecure. **DO NOT use this in production**.
+Once the application is running, navigating to the URL will display the app's start screen:
 
-Pass some extra parameters to the `useRealtime` hook:
+![App Screenshot](docs/talktoyourdataapp.png)
+
+### Frontend: Direct Communication with AOAI Realtime API
+
+If needed, you can configure the frontend to communicate directly with the **AOAI Realtime API**. However, this bypasses the RAG process and exposes your API key, making it unsuitable for production environments.
+
+Add the following parameters to the `useRealtime` hook in your frontend:
+
 ```typescript
 const { startSession, addUserAudio, inputAudioBufferClear } = useRealTime({
     useDirectAoaiApi: true,
     aoaiEndpointOverride: "wss://<NAME>.openai.azure.com",
     aoaiApiKeyOverride: "<YOUR API KEY, INSECURE!!!>",
-    aoaiModelOverride: "g
-
-pt-4o-realtime-preview",
+    aoaiModelOverride: "gpt-4o-realtime-preview",
     ...
 });
 ```
 
-### Notes
+### Important Notes
 
->Sample data: The PDF documents used in this demo contain information generated using a language model (Azure OpenAI Service). The information contained in these documents is only for demonstration purposes and does not reflect the opinions or beliefs of Microsoft. Microsoft makes no representations or warranties of any kind, express or implied, about the completeness, accuracy, reliability, suitability, or availability with respect to the information contained in this document. All rights reserved to Microsoft.
+The sample data and PDF documents included in this demo are generated by a language model (Azure OpenAI Service) and are for demonstration purposes only. They do not reflect the opinions or beliefs of Microsoft. Microsoft makes no guarantees regarding the accuracy, completeness, or suitability of the information provided in this demo.
+
+--- 
+

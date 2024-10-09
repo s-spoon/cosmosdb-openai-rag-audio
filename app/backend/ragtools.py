@@ -1,3 +1,4 @@
+import re
 import os
 from dotenv import load_dotenv
 from pymongo import MongoClient
@@ -55,7 +56,7 @@ def init_mongo_client(mongo_connection_string):
     return MongoClient(mongo_connection_string)
 
 # Function to perform vector search using cosine similarity in MongoDB
-def vector_search(query, mongo_client, database_name, collection_name, embeddings_model):
+async def vector_search(query, mongo_client, database_name, collection_name, embeddings_model):
     collection = mongo_client[database_name][collection_name]
 
     # Generate embedding for the query
@@ -66,10 +67,11 @@ def vector_search(query, mongo_client, database_name, collection_name, embedding
 
     results = []
     for doc in docs:
-        doc_embedding = np.array(doc['content'])
+        doc_embedding = np.array(doc['embedding'])
+        if doc_embedding.size == 0:
+            continue  # Skip if no valid embedding is found
         # Calculate cosine similarity between query and document embeddings
         similarity = cosine_similarity([query_embedding], [doc_embedding])[0][0]
-        print("--------------------------", doc['title'])
         results.append((doc['title'], similarity))  # Changed 'text' to 'title'
 
     # Sort by similarity score in descending order
@@ -82,19 +84,42 @@ async def _search_tool(mongo_client, database_name, collection_name, embeddings_
     print(f"Searching for '{args['query']}' in the knowledge base.")
     
     # Perform the vector search in MongoDB
-    results = vector_search(args['query'], mongo_client, database_name, collection_name, embeddings_model)
+    results = await vector_search(args['query'], mongo_client, database_name, collection_name, embeddings_model)
     
     result_str = ""
-    for i, (title, similarity) in enumerate(results):
+    async for i, (title, similarity) in enumerate(results):
         result_str += f"[doc_{i}]: {title} (Similarity: {similarity:.4f})\n-----\n"
     
     return ToolResult(result_str, ToolResultDirection.TO_SERVER)
 
-async def _report_grounding_tool(mongo_client, args: any) -> None:
-    # Grounding implementation remains similar but might require MongoDB lookups if sources are stored there
-    sources = args["sources"]
-    print(f"Grounding source: {', '.join(sources)}")
-    return ToolResult(f"Sources used: {', '.join(sources)}", ToolResultDirection.TO_SERVER)
+KEY_PATTERN = re.compile(r'^[a-zA-Z0-9_=\-]+$')
+
+async def _report_grounding_tool(mongo_client, database_name, collection_name, args: any) -> ToolResult:
+    sources = [s for s in args["sources"] if KEY_PATTERN.match(s)]
+    list_of_sources = " OR ".join(sources)
+    print(f"Grounding source: {list_of_sources}")
+
+    # Fetch documents from MongoDB based on the sources
+    collection = mongo_client[database_name][collection_name]  # Ensure you have access to the correct DB and collection
+    search_results = []
+
+    # Look up each source in the MongoDB collection
+    for source in sources:
+        doc = await collection.find_one({"title": source})  # Adjust the field if needed (e.g., based on your document structure)
+        if doc:
+            search_results.append({
+                "chunk_id": doc.get("title"),  # Assuming "title" is the identifier; replace if necessary
+                "content": doc.get("content"),  # Fetch other fields as needed
+                "metadata": doc.get("metadata")  # If you want to include metadata
+            })
+
+    # Format the results for the response
+    result_str = ""
+    async for result in search_results:
+        result_str += f"[{result['chunk_id']}]: {result['content']}\n-----\n"
+
+    return ToolResult(result_str.strip(), ToolResultDirection.TO_SERVER)
+
 
 def attach_rag_tools(rtmt: RTMiddleTier, mongo_connection_string: str, database_name: str, collection_name: str) -> None:
     # Initialize MongoDB client
@@ -114,5 +139,5 @@ def attach_rag_tools(rtmt: RTMiddleTier, mongo_connection_string: str, database_
     )
     rtmt.tools["report_grounding"] = Tool(
         schema=_grounding_tool_schema,
-        target=lambda args: _report_grounding_tool(mongo_client, args)
+        target=lambda args: _report_grounding_tool(mongo_client, database_name, collection_name, args)
     )
