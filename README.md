@@ -15,9 +15,9 @@ Follow these four key steps to run this example in your own environment: prepari
 Before proceeding, ensure that you have access to the following Azure services:
 
 1. [Azure OpenAI](https://ms.portal.azure.com/#create/Microsoft.CognitiveServicesOpenAI):
-   - Two model deployments: one for **gpt-4o-realtime-preview** and another for embeddings (e.g., `text-embedding-ada-002`).
+    - Two model deployments: one for **gpt-4o-realtime-preview** and another for embeddings (e.g., `text-embedding-ada-002`).
 2. [Azure Cosmos DB for MongoDB API](https://ms.portal.azure.com/#create/Microsoft.CosmosDBMongoAPI):
-   - This will store your document embeddings and metadata for vector search.
+    - This will store your document embeddings and metadata for vector search.
 
 ### 2. Configuring the Vector Store with Azure Cosmos DB for MongoDB
 
@@ -42,12 +42,12 @@ MONGO_DB_NAME=<your-database-name>
 MONGO_COLLECTION_NAME=<your-collection-name>
 ```
 
-- **AZURE_OPENAI_ENDPOINT**: The WebSocket endpoint for Azure OpenAI's GPT-4o Realtime API.
-- **AZURE_OPENAI_DEPLOYMENT**: The deployment name for the GPT-4o model.
-- **AZURE_OPENAI_API_KEY**: Your API key for Azure OpenAI.
-- **MONGO_CONNECTION_STRING**: The connection string for your Azure Cosmos DB for MongoDB instance.
-- **MONGO_DB_NAME**: The name of the database for storing embeddings.
-- **MONGO_COLLECTION_NAME**: The collection for storing documents and embeddings.
+-   **AZURE_OPENAI_ENDPOINT**: The WebSocket endpoint for Azure OpenAI's GPT-4o Realtime API.
+-   **AZURE_OPENAI_DEPLOYMENT**: The deployment name for the GPT-4o model.
+-   **AZURE_OPENAI_API_KEY**: Your API key for Azure OpenAI.
+-   **MONGO_CONNECTION_STRING**: The connection string for your Azure Cosmos DB for MongoDB instance.
+-   **MONGO_DB_NAME**: The name of the database for storing embeddings.
+-   **MONGO_COLLECTION_NAME**: The collection for storing documents and embeddings.
 
 ### 4. Running the Application
 
@@ -60,43 +60,39 @@ You can run the project locally using the [Dev Containers extension](https://mar
 1. Start Docker Desktop (if not already installed).
 2. Open the project using the link below:
 
-   [![Open in Dev Containers](https://img.shields.io/static/v1?style=for-the-badge&label=Dev%20Containers&message=Open&color=blue&logo=visualstudiocode)](https://vscode.dev/redirect?url=vscode://ms-vscode-remote.remote-containers/cloneInVolume?url=https://github.com/azure-samples/aisearch-openai-rag-audio)
+    [![Open in Dev Containers](https://img.shields.io/static/v1?style=for-the-badge&label=Dev%20Containers&message=Open&color=blue&logo=visualstudiocode)](https://vscode.dev/redirect?url=vscode://ms-vscode-remote.remote-containers/cloneInVolume?url=https://github.com/azure-samples/aisearch-openai-rag-audio)
 
 3. Once the project files load (this may take several minutes), open a new terminal and follow the next steps.
 
 #### Running Locally
 
 1. Install the required tools:
-   - [Node.js](https://nodejs.org/en)
-   - [Python 3.11 or later](https://www.python.org/downloads/)
-   - [Powershell](https://learn.microsoft.com/powershell/scripting/install/installing-powershell) (for Windows users)
+
+    - [Node.js](https://nodejs.org/en)
+    - [Python 3.11 or later](https://www.python.org/downloads/)
+    - [Powershell](https://learn.microsoft.com/powershell/scripting/install/installing-powershell)
 
 2. Clone the repository:
-   ```bash
-   git clone https://github.com/s-spoon/cosmosdb-openai-rag-audio.git
-   ```
+
+    ```bash
+    git clone https://github.com/s-spoon/cosmosdb-openai-rag-audio.git
+    ```
 
 3. Set up a Python virtual environment and activate it:
-   ```bash
-   python -m venv .venv
-   source .venv/bin/activate  # For Windows: .venv\Scripts\Activate.ps1
-   ```
+
+    ```bash
+    python -m venv .venv
+    source .venv/bin/activate
+    ```
 
 4. Start the application:
-   - **For Windows**:
-     ```pwsh
-     cd app
-     pwsh .\start.ps1
-     ```
 
-5. To upload documents(PDF) to Cosmos DB for MongoDB, open a new terminal and run the following:
-   ```bash
-   cd app/backend/
-   python db.py
-   ```
+    ```pwsh
+    cd app
+    pwsh .\start.ps1
+    ```
 
-   This script will replace the current collection in Cosmos DB and add the documents from `./data/`. These documents will serve as the basis for the response.
-   Restart the server.
+5. To incorporate basic knowledge documents into the RAG process, place the relevant PDF files in the ./data/ directory. The app will automatically process and store these documents in the vector store. This enables efficient retrieval of relevant information during searches based on specified query parameters. These documents will serve as the foundational data source for generating responses.
 
 6. Access the app at [http://localhost:8765](http://localhost:8765).
 
@@ -124,5 +120,4 @@ const { startSession, addUserAudio, inputAudioBufferClear } = useRealTime({
 
 The sample PDF documents included in this demo are generated by a language model (Azure OpenAI Service) and are for demonstration purposes only. They do not reflect the opinions or beliefs of Microsoft. Microsoft makes no guarantees regarding the accuracy, completeness, or suitability of the information provided in this demo.
 
---- 
-
+---

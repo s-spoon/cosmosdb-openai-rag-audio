@@ -107,7 +107,13 @@ class RTMiddleTier:
                         tool_call = self._tools_pending[message["item"]["call_id"]]
                         tool = self.tools[item["name"]]
                         args = item["arguments"]
-                        result = tool.target(json.loads(args))
+                        print("query", args)
+                        try:
+                            result = tool.target(json.loads(args))  # Decoding the JSON
+                        except json.JSONDecodeError as e:
+                            result = ToolResult(
+                                destination=ToolResultDirection.TO_SERVER,
+                            )
                         await server_ws.send_json({
                             "type": "conversation.item.create",
                             "item": {
@@ -179,7 +185,7 @@ class RTMiddleTier:
                 headers = {"Authorization": f"Bearer {self._token_provider()}"}
 
             # Retry logic
-            max_retries = 5  # You can adjust this value based on your needs
+            max_retries = 20  # You can adjust this value based on your needs
             retry_count = 0
             backoff_factor = 1  # Exponential backoff factor
 
@@ -214,7 +220,7 @@ class RTMiddleTier:
                     if e.status == 429:  # Too many requests error
                         retry_count += 1
                         # Exponential backoff with jitter
-                        sleep_time = backoff_factor * (2 ** retry_count) + random.uniform(0, 1)
+                        sleep_time = backoff_factor * (retry_count) + random.uniform(0, 1)
                         print(f"Rate limit exceeded. Retrying in {sleep_time} seconds...")
                         time.sleep(sleep_time)
                     else:
