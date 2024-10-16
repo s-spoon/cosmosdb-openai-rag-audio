@@ -19,7 +19,9 @@ load_dotenv()
 _search_tool_schema = {
     "type": "function",
     "name": "search",
-    "description": "Search the knowledge base using a query and return relevant results.",
+    "description": "Search the knowledge base. The knowledge base is in English, translate to and from English if " + \
+                   "needed. Results are formatted as a source name first in square brackets, followed by the text " + \
+                   "content, and a line with '-----' at the end of each result.",
     "parameters": {
         "type": "object",
         "properties": {
@@ -36,7 +38,9 @@ _search_tool_schema = {
 _grounding_tool_schema = {
     "type": "function",
     "name": "report_grounding",
-    "description": "Report the use of a source from the knowledge base by citing it.",
+    "description": "Report use of a source from the knowledge base as part of an answer (effectively, cite the source). Sources " + \
+                   "appear in square brackets before each knowledge base passage. Always use this tool to cite sources when responding " + \
+                   "with information from the knowledge base.",
     "parameters": {
         "type": "object",
         "properties": {
@@ -52,18 +56,33 @@ _grounding_tool_schema = {
     }
 }
 
-# Function to extract text from PDF files in a directory
-def extract_text_from_pdfs(pdf_dir):
+def chunk_text(text, chunk_size=1000):
+    # Split text into chunks of the given size
+    return [text[i:i + chunk_size] for i in range(0, len(text), chunk_size)]
+
+# Update function to extract text from PDF files and chunk them
+def extract_text_from_pdfs(pdf_dir, chunk_size=1000):
     documents = []
     for filename in os.listdir(pdf_dir):
         if filename.endswith(".pdf"):
+            print("Processing File:", filename)
             filepath = os.path.join(pdf_dir, filename)
             with pdfplumber.open(filepath) as pdf:
                 full_text = ""
                 for page in pdf.pages:
-                    full_text += page.extract_text()
-                # Ensure that we are creating Document objects
-                documents.append(Document(page_content=full_text, metadata={"title": filename}))
+                    page_text = page.extract_text()
+                    if page_text:
+                        full_text += page_text
+                
+                # Chunk the full text into smaller parts
+                chunks = chunk_text(full_text, chunk_size)
+                
+                # Create a Document object for each chunk
+                for i, chunk in enumerate(chunks):
+                    documents.append(Document(
+                        page_content=chunk,
+                        metadata={"title": f"{filename}_chunk_{i}"}
+                    ))
     return documents
 
 # Initialize MongoDB client
@@ -122,30 +141,27 @@ def _report_grounding_tool(mongo_client, vector_store, args):
 
     return ToolResult(result_str.strip(), ToolResultDirection.TO_SERVER)
 
-# Attach RAG tools to the RTMiddleTier
+def check_index_exists(collection, index_name):
+    indexes = collection.index_information()
+    return index_name in indexes
+
+def check_vector_store_empty(vector_store):
+    return vector_store._collection.count_documents({}) == 0
+
 def attach_rag_tools(rtmt, mongo_connection_string, database_name, collection_name, pdf_dir):
-    # Initialize MongoDB client
     mongo_client = init_mongo_client(mongo_connection_string)
 
-    # Initialize embedding model (Azure OpenAI)
     openai_embeddings = AzureOpenAIEmbeddings(
         model=os.getenv("AZURE_OPENAI_EMBEDDINGS_MODEL_NAME"),
         azure_deployment=os.getenv("AZURE_OPENAI_EMBEDDINGS_DEPLOYMENT_NAME"),
         api_key=os.getenv("AZURE_OPENAI_API_KEY")
     )
 
-    # Extract text from PDFs and create embeddings
-    documents = extract_text_from_pdfs(pdf_dir)
-
-    # Create vector store using AzureCosmosDBVectorSearch
     collection = mongo_client[database_name][collection_name]
     index_name = "ContosoIndex"
-    vector_store = AzureCosmosDBVectorSearch.from_documents(
-        documents,
-        openai_embeddings,
-        collection=collection,
-        index_name=index_name,
-    )
+
+    vector_store = None
+    create_new_index = not check_index_exists(collection, index_name)
 
     # Create HNSW index on the collection
     num_lists = 100
@@ -154,10 +170,49 @@ def attach_rag_tools(rtmt, mongo_connection_string, database_name, collection_na
     kind = CosmosDBVectorSearchType.VECTOR_HNSW
     m = 16
     ef_construction = 64
+    
+    # If the index doesn't exist or the vector store is empty, create and index the vector store
+    if create_new_index:
+        print("Creating vector store and indexing documents...")
 
-    vector_store.create_index(
-        num_lists, dimensions, similarity_algorithm, kind, m, ef_construction
-    )
+        documents = extract_text_from_pdfs(pdf_dir)
+        print("Documents", len(documents))
+
+        vector_store = AzureCosmosDBVectorSearch.from_documents(
+            documents,
+            openai_embeddings,
+            collection=collection,
+            index_name=index_name,
+        )
+
+        vector_store.create_index(
+            num_lists, dimensions, similarity_algorithm, kind, m, ef_construction
+        )
+    else:
+        print("Vector store already exists, reusing it for querying.")
+        vector_store = AzureCosmosDBVectorSearch(
+            collection=collection,
+            embedding=openai_embeddings,
+            index_name=index_name,
+        )
+
+        # Check if the vector store is empty and needs re-indexing
+        if check_vector_store_empty(vector_store):
+            print("Vector store is empty, extracting and indexing documents...")
+            documents = extract_text_from_pdfs(pdf_dir)
+            print("Documents", len(documents))
+
+            vector_store = AzureCosmosDBVectorSearch.from_documents(
+                documents,
+                openai_embeddings,
+                collection=collection,
+                index_name=index_name,
+            )
+
+            # Recreate the index if necessary
+            vector_store.create_index(
+                num_lists, dimensions, similarity_algorithm, kind, m, ef_construction
+            )
 
     # Attach search and grounding tools
     rtmt.tools["search"] = Tool(

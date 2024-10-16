@@ -109,11 +109,12 @@ class RTMiddleTier:
                         args = item["arguments"]
                         print("query", args)
                         try:
-                            result = tool.target(json.loads(args))  # Decoding the JSON
+                            args = json.loads(args)
                         except json.JSONDecodeError as e:
-                            result = ToolResult(
-                                destination=ToolResultDirection.TO_SERVER,
-                            )
+                            print(f"Invalid JSON format: {e}")
+                            args = {"query": ""}
+
+                        result = tool.target(args)  # Decoding the JSON
                         await server_ws.send_json({
                             "type": "conversation.item.create",
                             "item": {
