@@ -6,8 +6,6 @@ from typing import Any, Callable, Optional
 from aiohttp import web
 from azure.identity import DefaultAzureCredential, get_bearer_token_provider
 from azure.core.credentials import AzureKeyCredential
-import time
-import random
 
 class ToolResultDirection(Enum):
     TO_SERVER = 1
@@ -47,8 +45,12 @@ class RTMiddleTier:
     deployment: str
     key: Optional[str] = None
     
+    # Tools are server-side only for now, though the case could be made for client-side tools
+    # in addition to server-side tools that are invisible to the client
     tools: dict[str, Tool] = {}
 
+    # Server-enforced configuration, if set, these will override the client's configuration
+    # Typically at least the model name and system message will be set by the server
     model: Optional[str] = None
     system_message: Optional[str] = None
     temperature: Optional[float] = None
@@ -65,7 +67,7 @@ class RTMiddleTier:
             self.key = credentials.key
         else:
             self._token_provider = get_bearer_token_provider(credentials, "https://cognitiveservices.azure.com/.default")
-            self._token_provider()
+            self._token_provider() # Warm up during startup so we have a token cached when the first request arrives
 
     async def _process_message_to_client(self, msg: str, client_ws: web.WebSocketResponse, server_ws: web.WebSocketResponse) -> Optional[str]:
         message = json.loads(msg.data)
@@ -107,14 +109,7 @@ class RTMiddleTier:
                         tool_call = self._tools_pending[message["item"]["call_id"]]
                         tool = self.tools[item["name"]]
                         args = item["arguments"]
-                        print("query", args)
-                        try:
-                            args = json.loads(args)
-                        except json.JSONDecodeError as e:
-                            print(f"Invalid JSON format: {e}")
-                            args = {"query": ""}
-
-                        result = tool.target(args)  # Decoding the JSON
+                        result = tool.target(json.loads(args))
                         await server_ws.send_json({
                             "type": "conversation.item.create",
                             "item": {
@@ -174,61 +169,38 @@ class RTMiddleTier:
 
     async def _forward_messages(self, ws: web.WebSocketResponse):
         async with aiohttp.ClientSession(base_url=self.endpoint) as session:
-            params = {"api-version": "2024-10-01-preview", "deployment": self.deployment}
+            params = { "api-version": "2024-10-01-preview", "deployment": self.deployment }
             headers = {}
-            
             if "x-ms-client-request-id" in ws.headers:
                 headers["x-ms-client-request-id"] = ws.headers["x-ms-client-request-id"]
-            
             if self.key is not None:
-                headers = {"api-key": self.key}
+                headers = { "api-key": self.key }
             else:
-                headers = {"Authorization": f"Bearer {self._token_provider()}"}
+                headers = { "Authorization": f"Bearer {self._token_provider()}" } # NOTE: no async version of token provider, maybe refresh token on a timer?
+            async with session.ws_connect("/openai/realtime", headers=headers, params=params) as target_ws:
+                async def from_client_to_server():
+                    async for msg in ws:
+                        if msg.type == aiohttp.WSMsgType.TEXT:
+                            new_msg = await self._process_message_to_server(msg, ws)
+                            if new_msg is not None:
+                                await target_ws.send_str(new_msg)
+                        else:
+                            print("Error: unexpected message type:", msg.type)
 
-            # Retry logic
-            max_retries = 20  # You can adjust this value based on your needs
-            retry_count = 0
-            backoff_factor = 1  # Exponential backoff factor
+                async def from_server_to_client():
+                    async for msg in target_ws:
+                        if msg.type == aiohttp.WSMsgType.TEXT:
+                            new_msg = await self._process_message_to_client(msg, ws, target_ws)
+                            if new_msg is not None:
+                                await ws.send_str(new_msg)
+                        else:
+                            print("Error: unexpected message type:", msg.type)
 
-            while retry_count < max_retries:
                 try:
-                    async with session.ws_connect("/openai/realtime", headers=headers, params=params) as target_ws:
-                        async def from_client_to_server():
-                            async for msg in ws:
-                                if msg.type == aiohttp.WSMsgType.TEXT:
-                                    new_msg = await self._process_message_to_server(msg, ws)
-                                    if new_msg is not None:
-                                        await target_ws.send_str(new_msg)
-                                else:
-                                    print("Error: unexpected message type:", msg.type)
-
-                        async def from_server_to_client():
-                            async for msg in target_ws:
-                                if msg.type == aiohttp.WSMsgType.TEXT:
-                                    new_msg = await self._process_message_to_client(msg, ws, target_ws)
-                                    if new_msg is not None:
-                                        await ws.send_str(new_msg)
-                                else:
-                                    print("Error: unexpected message type:", msg.type)
-
-                        try:
-                            await asyncio.gather(from_client_to_server(), from_server_to_client())
-                            break  # Exit the loop if the connection is successful
-                        except ConnectionResetError:
-                            pass  # Ignore the errors resulting from the client disconnecting the socket
-
-                except aiohttp.client_exceptions.WSServerHandshakeError as e:
-                    if e.status == 429:  # Too many requests error
-                        retry_count += 1
-                        # Exponential backoff with jitter
-                        sleep_time = backoff_factor * (retry_count) + random.uniform(0, 1)
-                        print(f"Rate limit exceeded. Retrying in {sleep_time} seconds...")
-                        time.sleep(sleep_time)
-                    else:
-                        raise  # If it's another error, raise it
-
-            if retry_count == max_retries:
-                print("Max retries reached. Unable to connect to the server.")           
+                    await asyncio.gather(from_client_to_server(), from_server_to_client())
+                except ConnectionResetError:
+                    # Ignore the errors resulting from the client disconnecting the socket
+                    pass
 
     async def _websocket_handler(self, request: web.Request):
         ws = web.WebSocketResponse()
